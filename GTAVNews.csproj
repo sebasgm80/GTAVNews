@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>uap10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ApplicationDisplayName>GTA V News</ApplicationDisplayName>
+    <PackageDisplayName>GTA V News</PackageDisplayName>
+    <RootNamespace>GTAVNews</RootNamespace>
+  </PropertyGroup>
+</Project>
