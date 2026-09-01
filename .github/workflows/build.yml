@@ -8,12 +8,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-      - name: Build & Package
+      - name: Find MSBuild
+        id: msbuild
         run: |
-          msbuild GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:GenerateAppInstallerFile=false /p:AppxBundle=Never
-          Get-ChildItem -Recurse -Filter *.msix
+          $path = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter msbuild.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $path) { $path = "msbuild" }
+          Write-Output "::set-output name=path::$path"
+        shell: pwsh
+      - name: Build UWP
+        run: |
+          & "${{ steps.msbuild.outputs.path }}" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly
+      - name: Find MSIX
+        run: |
+          Get-ChildItem -Recurse -Filter *.msix | ForEach-Object { $_.FullName }
       - name: Upload MSIX
         uses: actions/upload-artifact@v4
         with:
