@@ -1,30 +1,90 @@
 name: Build GTA V News
+
 on:
   schedule:
     - cron: '0 0 1 */2 *'
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      UWP_BUILD_MODE: SideloadOnly
+
     steps:
       - uses: actions/checkout@v5
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
       - name: Find MSBuild
         id: msbuild
         shell: pwsh
         run: |
-          $path = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          if (-not $path) { $path = (Get-ChildItem -Path "C:\Program Files (x86)" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
-          Write-Host "MSBuild: $path"
+          $paths = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+          )
+          $path = $null
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              $path = $p
+              break
+            }
+          }
+          if (-not $path) {
+            $vs19 = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2019\" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($vs19) { $path = $vs19.FullName }
+          }
+          if (-not $path) {
+            $path = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          }
+          if (-not $path) {
+            $path = (Get-ChildItem -Path "C:\Program Files (x86)\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          }
+          Write-Host "MSBuild found at: $path"
+          if (-not $path) { throw "MSBuild.exe not found in Visual Studio" }
           $path | Out-File -FilePath "$env:GITHUB_WORKSPACE\msbuild_path.txt" -NoNewline
-      - name: Build
+
+      - name: Verify MSBuild
+        shell: pwsh
+        run: |
+          $msbuild = Get-Content -Path "$env:GITHUB_WORKSPACE\msbuild_path.txt" -Raw
+          Write-Host "Using MSBuild: $msbuild"
+          & $msbuild /version
+          dotnet --version
+          dotnet --list-sdks
+
+      - name: Build UWP (Sideload)
         shell: cmd
         run: |
           set /p MSBUILD_PATH=<msbuild_path.txt
-          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never
-      - name: Upload
-        if: success()
+          echo Using MSBuild: %MSBUILD_PATH%
+          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /verbosity:minimal
+
+      - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GTAVNews-MSIX
-          path: '**/*.msix'
+          path: |
+            GTAVNews\bin\x64\Release\Appx\
+            GTAVNews\bin\x64\Release\*.msix
+            GTAVNews\bin\x64\Release\*.appx
+            GTAVNews\bin\x64\Release\*.exe
+            GTAVNews\bin\x86\Release\Appx\
+            GTAVNews\bin\x86\Release\*.msix
+            GTAVNews\bin\x86\Release\*.appx
+          if-no-files-found: ignore
+
+      - name: Report status
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== Build completed ==="
+          Get-ChildItem -Recurse -Path "GTAVNews\bin" -Include "*.msix", "*.appx", "*.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Generated: $($_.FullName)" }
