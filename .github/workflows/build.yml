@@ -9,10 +9,18 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - name: Find MSBuild
+        id: find
+        shell: cmd
+        run: |
+          for /r "C:\Program Files" %%f in (MSBuild.exe) do echo %%f
+          for /r "C:\Program Files (x86)" %%f in (MSBuild.exe) do echo %%f
       - name: Build & Package
         shell: cmd
-        run: msbuild GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never
+        run: |
+          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /v:detailed
       - name: Upload MSIX
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: GTAVNews-MSIX
