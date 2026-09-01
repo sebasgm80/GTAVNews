@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       UWP_BUILD_MODE: SideloadOnly
 
@@ -20,66 +20,71 @@ jobs:
         with:
           dotnet-version: '6.0.x'
 
-      - name: Find MSBuild
-        id: msbuild
-        shell: pwsh
-        run: |
-          $paths = @(
-            "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
-            "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe",
-            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
-            "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-          )
-          $path = $null
-          foreach ($p in $paths) {
-            if (Test-Path $p) {
-              $path = $p
-              break
-            }
-          }
-          if (-not $path) {
-            $vs19 = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2019\" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($vs19) { $path = $vs19.FullName }
-          }
-          if (-not $path) {
-            $path = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          }
-          if (-not $path) {
-            $path = (Get-ChildItem -Path "C:\Program Files (x86)\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          }
-          Write-Host "MSBuild found at: $path"
-          if (-not $path) { throw "MSBuild.exe not found in Visual Studio" }
-          $path | Out-File -FilePath "$env:GITHUB_WORKSPACE\msbuild_path.txt" -NoNewline
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-      - name: Verify MSBuild
+      - name: Verify Windows SDK
         shell: pwsh
         run: |
-          $msbuild = Get-Content -Path "$env:GITHUB_WORKSPACE\msbuild_path.txt" -Raw
-          Write-Host "Using MSBuild: $msbuild"
-          & $msbuild /version
-          dotnet --version
-          dotnet --list-sdks
+          Write-Host "Checking Windows SDK..."
+          $sdks = Get-ChildItem "C:\Program Files (x86)\Windows Kits\Include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+          if ($sdks) {
+            Write-Host "Available SDKs: $($sdks.Name -join ', ')"
+          }
+          Write-Host "Visual Studio location: $env:VSINSTALLDIR"
+          Write-Host "MSBuild: $(Get-Command MSBuild).Source"
 
       - name: Build UWP (Sideload)
-        shell: cmd
+        shell: pwsh
         run: |
-          set /p MSBUILD_PATH=<msbuild_path.txt
-          echo Using MSBuild: %MSBUILD_PATH%
-          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /verbosity:minimal
+          $csproj = "GTAVNews.csproj"
+          Write-Host "Building $csproj..."
+          Write-Host "Working directory: $(Get-Location)"
+          
+          # Use MSBuild from setup-msbuild action
+          $msbuild = "MSBuild.exe"
+          
+          $params = @(
+            $csproj,
+            "/p:Configuration=Release",
+            "/p:Platform=x64",
+            "/t:Build",
+            "/p:UapAppxPackageBuildMode=SideloadOnly",
+            "/p:AppxBundle=Never",
+            "/p:AppxPackageDir="$(Get-Location)\AppxPackages"",
+            "/p:AppxPackageSigningEnabled=false",
+            "/verbosity:minimal"
+          )
+          
+          Write-Host "Running: $msbuild $($params -join ' ')"
+          & $msbuild @params
+          
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Build succeeded"
+            # Find the generated files
+            Get-ChildItem -Recurse -Path "GTAVNewsin" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "Generated: $($_.FullName)"
+            }
+            Get-ChildItem -Recurse -Path "AppxPackages" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "Generated in AppxPackages: $($_.FullName)"
+            }
+          } else {
+            Write-Host "❌ Build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
 
-      - name: Upload artifact
+      - name: Upload artifact (.msix or .appx)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GTAVNews-MSIX
           path: |
-            GTAVNews\bin\x64\Release\Appx\
-            GTAVNews\bin\x64\Release\*.msix
-            GTAVNews\bin\x64\Release\*.appx
-            GTAVNews\bin\x64\Release\*.exe
-            GTAVNews\bin\x86\Release\Appx\
-            GTAVNews\bin\x86\Release\*.msix
-            GTAVNews\bin\x86\Release\*.appx
+            GTAVNews/bin/**/*.msix
+            GTAVNews/bin/**/*.appx
+            GTAVNews/bin/**/*.appxbundle
+            AppxPackages/**/*.msix
+            AppxPackages/**/*.appx
+            AppxPackages/**/*.appxbundle
           if-no-files-found: ignore
 
       - name: Report status
@@ -87,4 +92,8 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Build completed ==="
-          Get-ChildItem -Recurse -Path "GTAVNews\bin" -Include "*.msix", "*.appx", "*.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Generated: $($_.FullName)" }
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ SUCCESS - App package generated"
+          } else {
+            Write-Host "❌ FAILED - Check logs above"
+          }
