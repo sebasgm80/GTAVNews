@@ -8,21 +8,35 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install UWP SDK
+        run: |
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Workload.Universal --quiet --norestart --wait
+        shell: pwsh
+        timeoutInMinutes: 20
       - name: Find MSBuild
         id: msbuild
         run: |
           $path = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter msbuild.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           if (-not $path) { $path = "msbuild" }
-          Write-Output "::set-output name=path::$path"
+          Write-Output "path=$path" >> $env:GITHUB_OUTPUT
         shell: pwsh
-      - name: Build UWP
+      - name: Build & Package
         run: |
-          & "${{ steps.msbuild.outputs.path }}" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly
-      - name: Find MSIX
+          & "${{ steps.msbuild.outputs.path }}" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:GenerateAppInstallerFile=false /p:AppInstallerUri=""
+      - name: Sign MSIX
         run: |
-          Get-ChildItem -Recurse -Filter *.msix | ForEach-Object { $_.FullName }
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=GTAVNewsDev" -CertStoreLocation Cert:\CurrentUser\My
+          $msix = Get-ChildItem -Recurse -Filter *.msix -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msix) {
+            Set-AuthenticodeSignature -FilePath $msix.FullName -Certificate $cert -HashAlgorithm SHA256
+            Write-Host "Signed: $($msix.FullName)"
+          } else {
+            Write-Host "No MSIX found, searching..."
+            Get-ChildItem -Recurse -Filter *.msix -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
+          }
+        shell: pwsh
       - name: Upload MSIX
         uses: actions/upload-artifact@v4
         with:
           name: GTAVNews-MSIX
-          path: GTAVNews/bin/x64/Release/Appx/*.msix
+          path: '**/*.msix'

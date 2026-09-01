@@ -5,5 +5,7 @@
     <ApplicationDisplayName>GTA V News</ApplicationDisplayName>
     <PackageDisplayName>GTA V News</PackageDisplayName>
     <RootNamespace>GTAVNews</RootNamespace>
+    <TargetPlatformVersion>10.0.22621.0</TargetPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
   </PropertyGroup>
 </Project>
