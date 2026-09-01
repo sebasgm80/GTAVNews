@@ -10,16 +10,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Find MSBuild
-        id: find
+        id: msbuild
+        shell: pwsh
+        run: |
+          $path = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $path) { $path = (Get-ChildItem -Path "C:\Program Files (x86)" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          Write-Host "MSBuild: $path"
+          $path | Out-File -FilePath "$env:GITHUB_WORKSPACE\msbuild_path.txt" -NoNewline
+      - name: Build
         shell: cmd
         run: |
-          for /r "C:\Program Files" %%f in (MSBuild.exe) do echo %%f
-          for /r "C:\Program Files (x86)" %%f in (MSBuild.exe) do echo %%f
-      - name: Build & Package
-        shell: cmd
-        run: |
-          "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /v:detailed
-      - name: Upload MSIX
+          set /p MSBUILD_PATH=<msbuild_path.txt
+          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never
+      - name: Upload
         if: success()
         uses: actions/upload-artifact@v4
         with:
