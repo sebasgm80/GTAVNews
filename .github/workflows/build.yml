@@ -6,23 +6,23 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
       - name: Install UWP SDK
         run: |
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Workload.Universal --quiet --norestart --wait
-        shell: pwsh
-      - name: Find MSBuild
-        id: msbuild
-        run: |
-          $path = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter msbuild.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $path) { $path = "msbuild" }
-          Write-Output "path=$path" >> $env:GITHUB_OUTPUT
+          $installer = "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe"
+          & $installer modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --add Microsoft.VisualStudio.Component.Windows10SDK --quiet --norestart --wait
         shell: pwsh
       - name: Build & Package
         run: |
-          & "${{ steps.msbuild.outputs.path }}" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:GenerateAppInstallerFile=false /p:AppInstallerUri=""
+          msbuild GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Publish /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:GenerateAppInstallerFile=false /p:AppInstallerUri=""
       - name: Sign MSIX
         run: |
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=GTAVNewsDev" -CertStoreLocation Cert:\CurrentUser\My
@@ -31,7 +31,7 @@ jobs:
             Set-AuthenticodeSignature -FilePath $msix.FullName -Certificate $cert -HashAlgorithm SHA256
             Write-Host "Signed: $($msix.FullName)"
           } else {
-            Write-Host "No MSIX found, searching..."
+            Write-Host "No MSIX found"
             Get-ChildItem -Recurse -Filter *.msix -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
           }
         shell: pwsh
