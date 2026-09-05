@@ -27,23 +27,19 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Checking Windows SDK..."
-          $sdks = Get-ChildItem "C:\Program Files (x86)\Windows Kits\Include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+          $sdks = Get-ChildItem "C:\Program Files (x86)\Windows Kits\Include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
           if ($sdks) {
             Write-Host "Available SDKs: $($sdks.Name -join ', ')"
           }
           Write-Host "Visual Studio location: $env:VSINSTALLDIR"
           Write-Host "MSBuild: $(Get-Command MSBuild).Source"
 
-      - name: Build UWP (Sideload)
+      - name: Build UWP (Store, x64, Bundle)
         shell: pwsh
         run: |
           $csproj = "GTAVNews.csproj"
           Write-Host "Building $csproj..."
-          Write-Host "Working directory: $(Get-Location)"
-          
-          # Use MSBuild from setup-msbuild action
-          $msbuild = "MSBuild.exe"
-          
+
           $params = @(
             $csproj,
             "/p:Configuration=Release",
@@ -51,18 +47,16 @@ jobs:
             "/t:Build",
             "/p:UapAppxPackageBuildMode=Store",
             "/p:AppxBundle=Always",
-            "/p:AppxPackageDir="$(Get-Location)\AppxPackages"",
             "/p:AppxPackageSigningEnabled=false",
             "/verbosity:minimal"
           )
-          
-          Write-Host "Running: $msbuild $($params -join ' ')"
-          & $msbuild @params
-          
+
+          Write-Host "Running: MSBuild $($params -join ' ')"
+          MSBuild @params
+
           if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Build succeeded"
-            # Find the generated files
-            Get-ChildItem -Recurse -Path "GTAVNewsin" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Recurse -Path "GTAVNews\bin" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
               Write-Host "Generated: $($_.FullName)"
             }
             Get-ChildItem -Recurse -Path "AppxPackages" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
