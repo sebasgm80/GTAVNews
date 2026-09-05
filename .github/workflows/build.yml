@@ -13,15 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup Visual Studio (UWP workload)
-        uses: microsoft/vstest-setup-action@v1
-        with:
-          vs-version: latest
-
       - name: Install UWP SDK via chocolatey
         shell: pwsh
         run: |
-          # Install Windows 10 SDK with UWP support
+          Write-Host "Installing UWP SDK via chocolatey..."
           choco install windows-sdk-10-version-2004-all -y --no-progress 2>&1 | Out-Null
           Write-Host "UWP SDK installed"
 
@@ -31,15 +26,12 @@ jobs:
       - name: Verify SDK and MSBuild
         shell: pwsh
         run: |
-          $sdk = "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\winrt\um"
-          if (Test-Path $sdk) {
-            Write-Host "✅ UWP SDK found at $sdk"
-          } else {
-            Write-Host "⚠️ UWP SDK not found, trying to locate..."
-            Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory | Select-Object -First 5 | ForEach-Object {
-              Write-Host "Available: $($_.Name)"
-            }
-          }
+          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\Include"
+          $sdkVersion = Get-ChildItem $sdkPath -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "^10\.0\." } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+          Write-Host "Using SDK version: $sdkVersion"
           Write-Host "MSBuild: $( (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source )"
 
       - name: Build UWP (Store, x64, Bundle)
@@ -48,24 +40,18 @@ jobs:
           $csproj = "GTAVNews.csproj"
           Write-Host "Building $csproj..."
 
-          # Try to find a working SDK
-          $sdkPath = "C:\Program Files (x86)\Windows Kits\10"
-          $sdkVersion = Get-ChildItem "$sdkPath\Include" -Directory -ErrorAction SilentlyContinue |
+          $sdkVersion = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory |
             Where-Object { $_.Name -match "^10\.0\." } |
             Sort-Object Name -Descending |
             Select-Object -First 1 -ExpandProperty Name
 
-          Write-Host "Using SDK version: $sdkVersion"
-
-          $env:UAP_SDK_PATH = "$sdkPath\References\$sdkVersion\"
-          Write-Host "UAP SDK Path: $env:UAP_SDK_PATH"
+          Write-Host "SDK version: $sdkVersion"
 
           $params = @(
             $csproj,
             "/p:Configuration=Release",
             "/p:Platform=x64",
-            "/p:PlatformToolset=v143",
-            "/p:TargetPlatformVersion=10.0.19041.0",
+            "/p:TargetPlatformVersion=$sdkVersion",
             "/p:TargetPlatformMinVersion=10.0.17763.0",
             "/t:Build",
             "/p:UapAppxPackageBuildMode=Store",
@@ -96,7 +82,6 @@ jobs:
             GTAVNews/bin/**/*.msix
             GTAVNews/bin/**/*.appx
             GTAVNews/bin/**/*.appxbundle
-            GTAVNews/bin/**/StoreLayout映射/**
           if-no-files-found: ignore
 
       - name: Report status
