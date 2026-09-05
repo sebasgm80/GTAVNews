@@ -1,6 +1,6 @@
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.Web.Syndication.SyndicationFeed;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Web.Syndication;
 
 namespace GTAVNews
 {
