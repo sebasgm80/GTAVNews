@@ -21,7 +21,7 @@ jobs:
         shell: cmd
         run: |
           set /p MSBUILD_PATH=<msbuild_path.txt
-          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:Platform=x64 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never
+          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:TargetPlatformVersion=10.0.17763.0 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false
       - name: Upload
         if: success()
         uses: actions/upload-artifact@v4
