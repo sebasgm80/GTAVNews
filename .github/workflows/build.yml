@@ -1,30 +1,100 @@
 name: Build GTA V News
+
 on:
   schedule:
     - cron: '0 0 1 */2 *'
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
+
     steps:
       - uses: actions/checkout@v5
-      - name: Find MSBuild
-        id: msbuild
+
+      - name: Install Windows SDK 10.0.26100 (UAP reference assemblies)
         shell: pwsh
         run: |
-          $path = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          if (-not $path) { $path = (Get-ChildItem -Path "C:\Program Files (x86)" -Filter "MSBuild.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
-          Write-Host "MSBuild: $path"
-          $path | Out-File -FilePath "$env:GITHUB_WORKSPACE\msbuild_path.txt" -NoNewline
-      - name: Build
-        shell: cmd
+          Write-Host "Installing Windows SDK 10.0.26100 via chocolatey..."
+          choco install windows-sdk-10-version-2004-all -y --no-progress 2>&1 | Out-Null
+          Write-Host "Windows SDK installed"
+
+      - name: Verify SDK installation
+        shell: pwsh
         run: |
-          set /p MSBUILD_PATH=<msbuild_path.txt
-          "%MSBUILD_PATH%" GTAVNews.csproj /p:Configuration=Release /p:TargetPlatformVersion=10.0.17763.0 /t:Build /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false
-      - name: Upload
-        if: success()
+          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\Include"
+          Write-Host "SDK Include folder:"
+          Get-ChildItem $sdkPath -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "  $($_.Name)" }
+          Write-Host "SDK References folder:"
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\References" -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          msbuild GTAVNews.csproj /t:Restore /p:Configuration=Release
+
+      - name: Build UWP (Store, x64, Bundle)
+        shell: pwsh
+        run: |
+          $csproj = "GTAVNews.csproj"
+          Write-Host "Building $csproj..."
+
+          $sdkVersion = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory |
+            Where-Object { $_.Name -match "^10\.0\." } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+
+          Write-Host "SDK version: $sdkVersion"
+
+          $params = @(
+            $csproj,
+            "/p:Configuration=Release",
+            "/p:TargetPlatformVersion=$sdkVersion",
+            "/p:TargetPlatformMinVersion=10.0.17763.0",
+            "/t:Build",
+            "/p:UapAppxPackageBuildMode=Store",
+            "/p:AppxBundle=Always",
+            "/p:AppxPackageSigningEnabled=false",
+            "/verbosity:normal"
+          )
+
+          Write-Host "Running: MSBuild $($params -join ' ')"
+          MSBuild.exe @params
+
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Build succeeded"
+            Get-ChildItem -Recurse -Path "GTAVNews\bin" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "Generated: $($_.FullName)"
+            }
+          } else {
+            Write-Host "❌ Build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+      - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GTAVNews-MSIX
-          path: '**/*.msix'
+          path: |
+            GTAVNews/bin/**/*.msix
+            GTAVNews/bin/**/*.appx
+            GTAVNews/bin/**/*.appxbundle
+          if-no-files-found: ignore
+
+      - name: Report status
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== Build completed ==="
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ SUCCESS - App package generated"
+          } else {
+            Write-Host "❌ FAILED - Check logs above"
+          }
