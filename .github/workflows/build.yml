@@ -8,31 +8,39 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 60
-    env:
-      UWP_BUILD_MODE: SideloadOnly
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Setup Visual Studio (UWP workload)
+        uses: microsoft/vstest-setup-action@v1
         with:
-          dotnet-version: '6.0.x'
+          vs-version: latest
+
+      - name: Install UWP SDK via chocolatey
+        shell: pwsh
+        run: |
+          # Install Windows 10 SDK with UWP support
+          choco install windows-sdk-10-version-2004-all -y --no-progress 2>&1 | Out-Null
+          Write-Host "UWP SDK installed"
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Verify Windows SDK
+      - name: Verify SDK and MSBuild
         shell: pwsh
         run: |
-          Write-Host "Checking Windows SDK..."
-          $sdks = Get-ChildItem "C:\Program Files (x86)\Windows Kits\Include" -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-          if ($sdks) {
-            Write-Host "Available SDKs: $($sdks.Name -join ', ')"
+          $sdk = "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\winrt\um"
+          if (Test-Path $sdk) {
+            Write-Host "✅ UWP SDK found at $sdk"
+          } else {
+            Write-Host "⚠️ UWP SDK not found, trying to locate..."
+            Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory | Select-Object -First 5 | ForEach-Object {
+              Write-Host "Available: $($_.Name)"
+            }
           }
-          Write-Host "Visual Studio location: $env:VSINSTALLDIR"
-          Write-Host "MSBuild: $(Get-Command MSBuild).Source"
+          Write-Host "MSBuild: $( (Get-Command MSBuild.exe -ErrorAction SilentlyContinue).Source )"
 
       - name: Build UWP (Store, x64, Bundle)
         shell: pwsh
@@ -40,34 +48,46 @@ jobs:
           $csproj = "GTAVNews.csproj"
           Write-Host "Building $csproj..."
 
+          # Try to find a working SDK
+          $sdkPath = "C:\Program Files (x86)\Windows Kits\10"
+          $sdkVersion = Get-ChildItem "$sdkPath\Include" -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "^10\.0\." } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+
+          Write-Host "Using SDK version: $sdkVersion"
+
+          $env:UAP_SDK_PATH = "$sdkPath\References\$sdkVersion\"
+          Write-Host "UAP SDK Path: $env:UAP_SDK_PATH"
+
           $params = @(
             $csproj,
             "/p:Configuration=Release",
             "/p:Platform=x64",
+            "/p:PlatformToolset=v143",
+            "/p:TargetPlatformVersion=10.0.19041.0",
+            "/p:TargetPlatformMinVersion=10.0.17763.0",
             "/t:Build",
             "/p:UapAppxPackageBuildMode=Store",
             "/p:AppxBundle=Always",
             "/p:AppxPackageSigningEnabled=false",
-            "/verbosity:minimal"
+            "/verbosity:normal"
           )
 
           Write-Host "Running: MSBuild $($params -join ' ')"
-          MSBuild @params
+          MSBuild.exe @params
 
           if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Build succeeded"
             Get-ChildItem -Recurse -Path "GTAVNews\bin" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
               Write-Host "Generated: $($_.FullName)"
             }
-            Get-ChildItem -Recurse -Path "AppxPackages" -Include "*.msix", "*.appx", "*.appxbundle" -ErrorAction SilentlyContinue | ForEach-Object {
-              Write-Host "Generated in AppxPackages: $($_.FullName)"
-            }
           } else {
             Write-Host "❌ Build failed with exit code $LASTEXITCODE"
             exit $LASTEXITCODE
           }
 
-      - name: Upload artifact (.msix or .appx)
+      - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -76,9 +96,7 @@ jobs:
             GTAVNews/bin/**/*.msix
             GTAVNews/bin/**/*.appx
             GTAVNews/bin/**/*.appxbundle
-            AppxPackages/**/*.msix
-            AppxPackages/**/*.appx
-            AppxPackages/**/*.appxbundle
+            GTAVNews/bin/**/StoreLayout映射/**
           if-no-files-found: ignore
 
       - name: Report status
