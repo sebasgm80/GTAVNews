@@ -34,6 +34,11 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Restore NuGet packages
+        shell: pwsh
+        run: |
+          nuget restore GTAVNews.csproj
+
       - name: Build UWP (Store, x64, Bundle)
         shell: pwsh
         run: |
