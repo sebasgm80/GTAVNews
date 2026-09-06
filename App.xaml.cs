@@ -1,9 +1,16 @@
+using Windows.ApplicationModel.Activation;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
 
 namespace GTAVNews
 {
     public sealed partial class App : Application
     {
+        public App()
+        {
+            this.InitializeComponent();
+        }
+
         protected override void OnLaunched(LaunchActivatedEventArgs e)
         {
             Frame rootFrame = Window.Current.Content as Frame;

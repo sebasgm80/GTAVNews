@@ -4,7 +4,7 @@
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
   <Identity Name="GTAVNews_40EBE5D8-CD20-4824-B03C-60C93B8FCD9A"
             Publisher="CN=sebas"
-            Version="1.0.0.0" />
+            Version="1.0.1.0" />
   <Properties>
     <DisplayName>GTA V News</DisplayName>
     <PublisherDisplayName>sebas</PublisherDisplayName>
