@@ -17,7 +17,7 @@
     <Resource Language="x-generate" />
   </Resources>
   <Applications>
-    <Application Id="App" Executable="$targetnamewinshort$.exe" EntryPoint="$targetentrypoint$">
+    <Application Id="App" Executable="GTAVNews.exe" EntryPoint="GTAVNews.App">
       <uap:VisualElements DisplayName="GTA V News" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" Description="GTA V News" BackgroundColor="transparent">
         <uap:DefaultTile Wide310x150Logo="Assets\Square150x150Logo.png">
           <uap:ShowNameOnTiles>
