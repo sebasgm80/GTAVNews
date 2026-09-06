@@ -29,20 +29,10 @@ jobs:
           $csproj = "GTAVNews.csproj"
           Write-Host "Building $csproj..."
 
-          $sdkDir = "C:\Program Files (x86)\Windows Kits\10\UnionMetadata"
-          $installedSdk = "10.0.22621.0"
-          if (Test-Path $sdkDir) {
-            $found = (Get-ChildItem $sdkDir -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
-            if ($found) { $installedSdk = $found }
-          }
-          Write-Host "Using SDK: $installedSdk"
-
           $params = @(
             $csproj,
             "/p:Configuration=Release",
             "/p:Platform=x64",
-            "/p:TargetPlatformVersion=$installedSdk",
-            "/p:TargetPlatformMinVersion=10.0.17763.0",
             "/p:AppxBundle=Always",
             "/p:UapAppxPackageBuildMode=Store",
             "/p:AppxPackageSigningEnabled=false",
