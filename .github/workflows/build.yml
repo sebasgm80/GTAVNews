@@ -39,7 +39,7 @@ jobs:
           Write-Host "Certificate thumbprint: $thumbprint"
 
           # Export PFX (for signing) and CER (for user to install)
-          $pfxPassword = ConvertTo-SecureString -String "GTAVNews123!" -Force -AsPlainText
+          $pfxPassword = ConvertTo-SecureString -String "$(openssl rand -base64 16)" -Force -AsPlainText
           Export-PfxCertificate -Cert $cert -FilePath "GTAVNews.pfx" -Password $pfxPassword | Out-Null
           Export-Certificate -Cert $cert -FilePath "GTAVNews.cer" | Out-Null
 
@@ -63,7 +63,7 @@ jobs:
             "/p:UapAppxPackageBuildMode=Store",
             "/p:AppxPackageSigningEnabled=true",
             "/p:PackageCertificateKeyFile=GTAVNews.pfx",
-            "/p:PackageCertificatePassword=GTAVNews123!",
+            "/p:PackageCertificatePassword=$(openssl rand -base64 16)",
             "/p:PackageCertificateThumbprint=$env:CERT_THUMBPRINT",
             "/verbosity:normal"
           )
