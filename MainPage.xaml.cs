@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -12,13 +13,11 @@ namespace GTAVNews
 {
     public sealed partial class MainPage : Page
     {
-        // Multiple RSS sources in case one fails
         private readonly List<string> _feedUrls = new List<string>
         {
-            "https://www.rockstargames.com/feed",
-            "https://feeds.feedburner.com/RockstarGames",
             "https://www.reddit.com/r/gtaonline/new/.rss?sort=new",
-            "https://www.reddit.com/r/GTA/.rss"
+            "https://www.reddit.com/r/GTA/.rss",
+            "https://www.reddit.com/r/GrandTheftAutoV/new/.rss",
         };
 
         public MainPage()
@@ -28,17 +27,16 @@ namespace GTAVNews
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-            LoadNews();
+            _ = LoadNewsAsync();
         }
 
         private void RetryButton_Click(object sender, RoutedEventArgs e)
         {
-            LoadNews();
+            _ = LoadNewsAsync();
         }
 
-        private async void LoadNews()
+        private async Task LoadNewsAsync()
         {
-            // Show loading state
             LoadingPanel.Visibility = Visibility.Visible;
             ErrorPanel.Visibility = Visibility.Collapsed;
             NewsScrollViewer.Visibility = Visibility.Collapsed;
@@ -48,31 +46,40 @@ namespace GTAVNews
             SyndicationFeed feed = null;
             string lastError = "";
 
-            foreach (var url in _feedUrls)
+            try
             {
-                try
+                foreach (var url in _feedUrls)
                 {
-                    var client = new SyndicationClient();
-                    client.SetRequestHeader("User-Agent", "GTAVNewsApp/1.0 (Windows UWP)");
-                    client.SetRequestHeader("Accept", "application/rss+xml, application/atom+xml, */*");
-                    feed = await client.RetrieveFeedAsync(new Uri(url));
-                    if (feed != null && feed.Items != null && feed.Items.Count > 0)
-                        break;
+                    try
+                    {
+                        var client = new SyndicationClient();
+                        client.SetRequestHeader("User-Agent", "GTAVNewsApp/1.0 (Windows UWP)");
+                        client.SetRequestHeader("Accept", "application/rss+xml, application/atom+xml, */*");
+                        client.Timeout = 10000;
+                        feed = await client.RetrieveFeedAsync(new Uri(url));
+                        if (feed != null && feed.Items != null && feed.Items.Count > 0)
+                            break;
+                        feed = null;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastError = ex.Message;
+                        feed = null;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    lastError = ex.Message;
-                    feed = null;
-                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex.Message;
+                feed = null;
             }
 
             LoadingPanel.Visibility = Visibility.Collapsed;
 
             if (feed == null || feed.Items == null || feed.Items.Count == 0)
             {
-                // Show sample data so the app is never completely blank
                 ShowSampleData();
-                SubtitleText.Text = "Showing sample data (check your internet connection)";
+                SubtitleText.Text = "Sample data — connect to internet for live news";
                 return;
             }
 
@@ -97,9 +104,8 @@ namespace GTAVNews
                 string title = item.Title?.Text ?? "No title";
                 string summary = item.Summary?.Text ?? item.Content?.Text ?? "";
 
-                // Strip basic HTML tags from summary
                 summary = StripHtml(summary);
-                if (summary.Length > 200) summary = summary.Substring(0, 200) + "…";
+                if (summary.Length > 200) summary = summary.Substring(0, 200) + "...";
 
                 string date = "";
                 if (item.PublishedDate.Year > 2000)
@@ -172,14 +178,23 @@ namespace GTAVNews
 
         private void ShowSampleData()
         {
-            var samples = new List<(string title, string summary, string date)>
-            {
-                ("GTA V Online: Latest Update", "Rockstar Games continues to deliver new content for GTA Online players worldwide.", "Sep 2026"),
-                ("New Vehicles Added to Southern SA Auto", "Several new exotic and sports cars have been added to the in-game dealership.", "Sep 2026"),
-                ("Double Money on Select Missions", "This week features double GTA$ and RP on Contact Missions and Adversary Modes.", "Sep 2026"),
-                ("GTA 6 Hype Continues to Build", "The gaming community awaits the next installment in the Grand Theft Auto series.", "Sep 2026"),
-                ("Rockstar Newswire Updates", "Check Rockstar's official Newswire for the latest GTA Online news and events.", "Sep 2026"),
+            string[] titles = {
+                "GTA V Online: Latest Update",
+                "New Vehicles Added to Southern SA Auto",
+                "Double Money on Select Missions",
+                "GTA 6 Hype Continues to Build",
+                "Rockstar Newswire Updates",
             };
+
+            string[] summaries = {
+                "Rockstar Games continues to deliver new content for GTA Online players worldwide.",
+                "Several new exotic and sports cars have been added to the in-game dealership.",
+                "This week features double GTA$ and RP on Contact Missions and Adversary Modes.",
+                "The gaming community awaits the next installment in the Grand Theft Auto series.",
+                "Check Rockstar's official Newswire for the latest GTA Online news and events.",
+            };
+
+            string[] dates = { "Sep 2026", "Sep 2026", "Sep 2026", "Sep 2026", "Sep 2026" };
 
             Color[] colors = {
                 Color.FromArgb(255, 230, 57, 70),
@@ -187,11 +202,9 @@ namespace GTAVNews
                 Color.FromArgb(255, 76, 201, 240),
             };
 
-            int i = 0;
-            foreach (var (title, summary, date) in samples)
+            for (int i = 0; i < titles.Length; i++)
             {
-                NewsPanel.Children.Add(BuildCard(title, summary, date, colors[i % colors.Length]));
-                i++;
+                NewsPanel.Children.Add(BuildCard(titles[i], summaries[i], dates[i], colors[i % colors.Length]));
             }
             NewsScrollViewer.Visibility = Visibility.Visible;
         }
@@ -199,7 +212,6 @@ namespace GTAVNews
         private static string StripHtml(string input)
         {
             if (string.IsNullOrEmpty(input)) return "";
-            // Simple HTML tag removal
             var output = System.Text.RegularExpressions.Regex.Replace(input, "<.*?>", " ");
             output = System.Net.WebUtility.HtmlDecode(output);
             output = System.Text.RegularExpressions.Regex.Replace(output, @"\s+", " ").Trim();
